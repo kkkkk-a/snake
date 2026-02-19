@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEO TACTICS SERIES</title>
+    
+    <!-- 外部ライブラリ (安定版) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- フォント & CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;800&family=Orbitron:wght@700&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="common/shared.css">
+</head>
+<!-- index.html の該当箇所を修正・追記 -->
+
+<body>
+    <!-- 背景・HUBボタン（そのまま） -->
+    <div class="bg-grid"></div>
+    <a href="https://kkkkk-a.github.io/game-hub/" class="nav-return-btn" title="Game Hub">HUB</a>
+
+    <!-- 1. タイトル画面（そのまま） -->
+    <div id="screen-title" class="screen active">
+        <div class="panel-glass">
+            <h1 style="font-size: 3rem; line-height: 1; margin-bottom: 10px;">MINI<br>GAMES</h1>
+            <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+                <button class="btn" onclick="Core.select('smash')">スマッシュブレイカー</button>
+                <button class="btn" onclick="Core.select('graph')">グラフタクティクス</button>
+                <button class="btn" onclick="Core.select('line')">ラインヴァニッシュ</button>
+                <button class="btn" onclick="Core.select('calc')">カルク＆クラッシュ</button>
+                <button class="btn" onclick="Core.select('snake')">スネークタクティクス</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. モード選択画面（ヘルプボタン追加） -->
+    <div id="screen-setup" class="screen">
+        <h1 id="setup-title">GAME SETUP</h1>
+        <div style="display:flex; gap:10px; margin-bottom:20px;">
+            <button class="btn-mini" onclick="Core.showHelp()" style="background:#444; color:#fff;">？ ルール説明</button>
+        </div>
+        <button class="btn" onclick="Core.start('npc')">ひとり (VS CPU)</button>
+        <button class="btn" onclick="Core.start('local')">ふたり (対面)</button>
+        <button class="btn btn-accent" onclick="Shared.UI.show('screen-net')">オンライン対戦</button>
+        <button class="btn" style="border-color:#555; color:#aaa;" onclick="Shared.UI.show('screen-title')">もどる</button>
+    </div>
+
+    <!-- 3. オンライン接続画面（そのまま） -->
+    <div id="screen-net" class="screen">
+        <!-- (内容は変更なし) -->
+        <h2>NETWORK</h2>
+        <div id="net-init" style="display:flex; flex-direction:column; align-items:center;">
+            <button class="btn" onclick="Shared.Net.host()">部屋をつくる (HOST)</button>
+            <button class="btn btn-accent" onclick="Shared.Net.showGuest()">参加する (GUEST)</button>
+            <button class="btn" style="border-color:#555; color:#aaa;" onclick="Shared.UI.show('screen-setup')">もどる</button>
+        </div>
+        <!-- ホスト/ゲストUI省略（既存のまま） -->
+        <div id="net-host-ui" style="display:none; flex-direction:column; align-items:center;">
+             <div id="qr-area"></div>
+             <div id="host-id-text" class="id-box">---</div>
+             <div class="blink" style="color:var(--accent); margin-top:10px;">相手を待っています...</div>
+             <button class="btn" style="margin-top:20px;" onclick="Core.quitGame()">中止</button>
+        </div>
+        <div id="net-guest-ui" style="display:none; flex-direction:column; align-items:center;">
+             <div id="cam-wrapper"></div>
+             <button class="btn" onclick="Shared.Net.startCam()">📷 QRスキャン</button>
+             <div style="margin:5px; color:#aaa;">または</div>
+             <input type="text" id="join-id" class="input-code" placeholder="HOST ID">
+             <button class="btn btn-accent" onclick="Shared.Net.joinInput()">接続</button>
+             <button class="btn" style="border-color:#555; color:#aaa;" onclick="Core.quitGame()">もどる</button>
+        </div>
+    </div>
+
+    <!-- 4. ゲーム本編画面（BACKボタン追加） -->
+    <div id="screen-game" class="screen" style="padding:0; background:#000;">
+        <div id="game-container">
+            <!-- 戻るボタン -->
+            <button id="btn-game-exit" onclick="Core.quitGame()">✕ EXIT</button>
+            
+            <canvas id="main-cvs"></canvas>
+<div id="turn-display-area" style="position:absolute; top:40px; width:100%; text-align:center; pointer-events:none; z-index:10; display:none;">
+    <span style="font-family:'Orbitron'; color:#aaa; text-shadow:0 2px 2px #000; font-size: 0.8rem;">
+        TURN <span id="cur-turn">1</span>
+    </span>
+</div>
+            
+            <!-- HUDなどは既存のまま -->
+            <div class="hud">
+                <div id="hud-p2" style="color:var(--accent);">P2: 0</div>
+                <div id="hud-center"></div>
+                <div id="hud-p1" style="color:var(--primary);">P1: 0</div>
+            </div>
+            <div id="game-timer" class="game-timer"></div>
+            <div id="game-guide" class="guide-msg" style="display:none;"></div>
+
+            <!-- スマホUIレイヤー（既存のまま） -->
+            <div class="ui-overlay">
+                <!-- (各ゲームのUIボタン群は変更なし) -->
+                <div id="ui-smash" class="touch-group">
+                    <div class="ctrl-btn" id="rotL">↺</div>
+                    <div class="ctrl-btn smash" id="charge">蓄</div>
+                    <div class="ctrl-btn" id="rotR">↻</div>
+                </div>
+                <div id="ui-dpad" class="touch-group">
+                    <div class="dpad">
+                        <div style="grid-column:2;" class="d-btn" id="up">▲</div>
+                        <div class="d-btn" id="left">◀</div>
+                        <div class="d-btn" id="down">▼</div>
+                        <div class="d-btn" id="right">▶</div>
+                    </div>
+                </div>
+                <div id="ui-rps" class="touch-group">
+                    <div class="rps-btn" style="border-color:#ff4444;" id="r">✊</div>
+                    <div class="rps-btn" style="border-color:#44ff44;" id="s">✌</div>
+                    <div class="rps-btn" style="border-color:#4444ff;" id="p">🖐</div>
+                </div>
+                <!-- カルク用パネル（そのまま） -->
+                <div id="ui-calc" class="calc-panel">
+                    <div class="calc-header">TARGET: <span id="calc-target" style="color:var(--accent); font-size:2rem;">?</span></div>
+                    <div id="calc-disp" class="calc-disp"></div>
+                    <div id="calc-chips" class="calc-chips"></div>
+                    <div id="calc-hand" class="calc-hand"></div>
+                    <div class="calc-btns">
+                        <button class="btn-mini" id="c-clear">クリア</button>
+                        <button class="btn-mini" id="c-pass">パス</button>
+                        <button class="btn-mini accent" id="c-go">決定</button>
+                    </div>
+                </div>
+                <!-- P2用 D-Pad (画面上部に逆さまに表示) -->
+<div id="ui-dpad-p2" class="touch-group" style="position:absolute; top:20px; width:100%; display:none; transform: rotate(180deg);">
+    <div class="dpad">
+        <div style="grid-column:2;" class="d-btn" id="up2">▲</div>
+        <div class="d-btn" id="left2">◀</div>
+        <div class="d-btn" id="down2">▼</div>
+        <div class="d-btn" id="right2">▶</div>
+    </div>
+</div>
+
+<!-- P2用 Smashボタン (画面上部) -->
+<div id="ui-smash-p2" class="touch-group" style="position:absolute; top:20px; width:100%; display:none; transform: rotate(180deg); justify-content: center; gap:20px;">
+    <div class="ctrl-btn" id="rotL2">↺</div>
+    <div class="ctrl-btn smash" id="charge2">蓄</div>
+    <div class="ctrl-btn" id="rotR2">↻</div>
+</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 結果画面（ボタン変更） -->
+    <div id="screen-result" class="screen modal">
+        <h1 id="res-title">WIN!</h1>
+        <div id="res-detail" style="font-family:'Orbitron'; margin-bottom:20px;"></div>
+        <div style="display:flex; gap:10px;">
+            <button class="btn" onclick="Core.retry()">RETRY</button>
+            <button class="btn" style="border-color:#777;" onclick="Core.quitGame()">MENU</button>
+        </div>
+    </div>
+
+    <!-- 6. ヘルプ画面（新規追加） -->
+    <div id="screen-help" class="screen modal" style="z-index: 600;">
+        <div class="panel-glass" style="max-width:500px; text-align:left;">
+            <h2 id="help-title" style="text-align:center; color:var(--primary);">HELP</h2>
+            <div id="help-content" style="white-space: pre-wrap; line-height:1.6; font-size:0.9rem; max-height:60vh; overflow-y:auto; margin-bottom:20px;"></div>
+            <div style="text-align:center;">
+                <button class="btn-mini" onclick="Core.closeHelp()">とじる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS読み込み（そのまま） -->
+    <script src="common/shared-sys.js"></script>
+    <script src="game/smash-breaker.js"></script>
+    <script src="game/graph-tactics.js"></script>
+    <script src="game/line-vanish.js"></script>
+    <script src="game/calc-crash.js"></script>
+    <script src="game/snake-tactics.js"></script>
+
+    <!-- コアロジック（大幅アップデート） -->
+    <script>
+const Core = {
+        gameId: null,
+        currentMode: null, // リトライ用にモードを記憶
+
+        // 各ゲームのヘルプテキスト
+        helps: {
+            'smash': "【スマッシュブレイカー】\nゼンマイ式のピンボール対戦です。\n\n[操作]\n回転ボタン: バーの角度調整\n蓄ボタン(長押し): パワーチャージ\n指を離す: 弾く\n\nボールを相手の背後に落とせば勝利！\nチャージ量が多いほど強く弾きます。",
+            'graph': "【グラフタクティクス】\n3D空間での陣取りじゃんけんです。\n\n[ルール]\n勝利: 選んだ軸方向に「現在の値 + 1」進みます。\n（遠くへ行くほど、一気に加速して進みます！）\n\nあいこ: 1マス戻ります。\n敗北: 進めません。代わりに過去の軌跡が歪む（頂点が増える）ペナルティを受けます。\n\n[勝利条件]\n移動した軌跡と原点で囲まれた「面積」がスコアです。\n先にスコア100に到達した方の勝利です。",
+            'line': "【ラインヴァニッシュ】\n消える三目並べです。\n\n[ルール]\n3x3のマスに交互にコマを置きます。\n3つ揃うと相手にダメージ！\n\nただし「4つ目のコマ」を置くと、一番古い自分のコマが消えます。\n常に盤面が変化する中で、一瞬のビンゴを狙いましょう。",
+            'calc': "【カルク＆クラッシュ】\n計算式を作って相手の数字を破壊するカードバトル。\n\n[ルール]\n1. 数字カードを1枚選んで出し合います。\n2. 相手の数字と一致したら「CRASH」で大ダメージ！\n3. 一致しない場合、自分の手札と記号(+, -, *, /)を使って、相手の数字になる計算式を作ります。\n\n計算成功で相手にダメージ、失敗で自分がダメージを受けます。",
+            'snake': "【スネークタクティクス】\n伸びる蛇を操作するサバイバルゲーム。\n\n[操作]\n十字キーまたはボタンで方向転換。\n\n[ルール]\n光るエサを食べると体が伸び、スコアアップ。\n壁や自分、相手の体にぶつかると負けです。\n生き残りを目指しましょう。"
+        },
+
+        // ゲーム選択
+        select(id) {
+            this.gameId = id;
+            document.getElementById('setup-title').innerText = id.toUpperCase();
+            Shared.UI.show('screen-setup');
+        },
+
+        // ヘルプ表示
+        showHelp() {
+            const text = this.helps[this.gameId] || "説明がありません";
+            document.getElementById('help-title').innerText = this.gameId.toUpperCase();
+            document.getElementById('help-content').innerText = text;
+            
+            // モーダルを表示
+            const el = document.getElementById('screen-help');
+            el.classList.add('active');
+            el.style.display = 'flex';
+        },
+
+closeHelp() {
+    const el = document.getElementById('screen-help');
+    el.classList.remove('active');
+    el.style.display = 'none';
+    // セットアップ画面を確実に再表示
+    document.getElementById('screen-setup').style.display = 'flex';
+},
+
+        // ゲーム開始
+        start(mode) {
+            this.currentMode = mode;
+            Shared.Sound.init();
+            
+            const gameMap = {
+                'smash': SmashGame, 'graph': GraphGame, 
+                'line': LineGame, 'calc': CalcGame, 'snake': SnakeGame
+            };
+            const game = gameMap[this.gameId];
+            
+            if (!game) return alert("Game not found");
+
+            // UIリセット
+            document.querySelectorAll('.touch-group').forEach(e => e.classList.remove('active'));
+            document.getElementById('ui-calc').classList.remove('active');
+            
+            // 既存の終了処理を呼んでおく（念のため）
+            if(game.stop) game.stop();
+
+            // モードに応じて初期化
+            if (mode === 'npc' || mode === 'local') {
+                game.init(mode);
+            } else if (mode === 'online-host') {
+                game.init('online-host');
+            } else if (mode === 'online-guest') {
+                game.init('online-guest');
+            }
+        },
+
+        // ゲーム中断・終了処理 (Back / Menuボタン用)
+        quitGame() {
+            const gameMap = {
+                'smash': SmashGame, 'graph': GraphGame, 
+                'line': LineGame, 'calc': CalcGame, 'snake': SnakeGame
+            };
+            const game = gameMap[this.gameId];
+
+            // 各ゲームの停止処理を実行
+            if (game && game.stop) {
+                game.stop();
+            }
+
+            // 通信切断
+            if (Shared.Net.conn) {
+                Shared.Net.conn.close();
+                Shared.Net.conn = null;
+            }
+
+            // モード選択画面に戻る (タイトルではなくセットアップ画面)
+            Shared.UI.show('screen-setup');
+        },
+
+        // リトライ処理
+        retry() {
+            // 現在のゲームを停止
+            const gameMap = {'smash':SmashGame,'graph':GraphGame,'line':LineGame,'calc':CalcGame,'snake':SnakeGame};
+            const game = gameMap[this.gameId];
+            if(game && game.stop) game.stop();
+
+            // オンラインの場合は再接続が複雑なため、一旦メニューに戻す
+            if(this.currentMode && this.currentMode.includes('online')) {
+                this.quitGame();
+            } else {
+                // ローカル/NPCなら即再開
+                this.start(this.currentMode);
+            }
+        }
+    };
+    </script>
+</body>
+</html>
